@@ -1,0 +1,47 @@
+2026 08 21
+
+OSNS_dnssd
+----------
+
+
+ONSN_dnssd user the DNS SD protocol to detect available services in the local network.
+It uses the mdns implementation at:
+
+https://github.com/mjansson/mdns
+
+It sends discovery eand query request, and processes the respones, and stores them
+in a backaend. This backend can be:
+
+- ldap like OpenLDAP
+- sql like SQLITE
+- filesystem as fallback
+
+At moment of writing the first backend ldap is being worked on.
+
+The purpose is that appilactions can easily browse the network services,
+well much easier than doing mdsn self (using ldap client library, sql client library or simple fs ops).
+
+
+Backenbd spoecific
+
+
+ldap
+----
+
+OSNS_ddnssd stores information at ou=dnssd,ou=system,dc=localhost,dc=localdomain
+
+At this moment I'm finding out how the records should look like, and the hiearchy.
+
+
+sql
+----
+
+follows
+
+
+fs
+--
+
+follows
+
+
