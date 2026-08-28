@@ -10,12 +10,17 @@
 #include "libosns-datatypes.h"
 #include "libosns-event.h"
 #include "libosns-io.h"
+#include "libosns-osns.h"
 #include "libosns-dnssd.h"
 
 #include "osns/osns.h"
 #include "osns/start.h"
 
+#include "db/file.h"
+#include "db/handle.h"
+
 static struct osns_ctx_action_s action;
+static struct osns_db_ctx_s db_ctx;
 
 #define NETWORK_RESOURCE_DOMAIN_FLAG_DNSSD              1
 #define NETWORK_RESOURCE_HOST_FLAG_DNSSD                2
@@ -23,35 +28,101 @@ static struct osns_ctx_action_s action;
 #define NETWORK_RESOURCE_TRANSPORT_FLAG_DNSSD           4
 #define NETWORK_RESOURCE_ADDRESS_FLAG_DNSSD             5
 
-
-static int NETWORK_db_add_network_domain(struct dstr_s *domain, uint64_t *p_dbid, unsigned int flags)
+static int NETWORK_db_add_network_domain(struct osns_ctx_s *octx, struct dstr_s *domain, uint64_t *p_dbid, unsigned int flags, void *ptr)
 {
     logoutput_debug("%s: add domain %.*s", __FUNCTION__, domain->length, domain->str);
+
     return 0;
 }
 
-static int NETWORK_db_add_network_host(struct dstr_s *hostname, uint64_t dbid_domain, uint64_t *p_dbid, unsigned int flags)
+static int NETWORK_db_add_network_host(struct osns_ctx_s *octx, struct dstr_s *hostname, uint64_t dbid_domain, uint64_t *p_dbid, unsigned int flags, void *ptr)
 {
+    struct osns_db_handle_s *handle=NULL;
+    int result=0;
+
     logoutput_debug("%s: add host %.*s", __FUNCTION__, hostname->length, hostname->str);
-    return 0;
+
+    handle=OSNS_db_get_handle(octx);
+
+    if (handle) {
+	struct osns_value_s value[2];
+
+	value[0].type='d';
+	value[0].ptr=(void *)hostname;
+	value[1].type=0;
+	value[1].ptr=NULL;
+
+	result=OSNS_modify_db_fs(octx, handle, "host", value, 2, OSNS_DNSSD_MODUS_INSERT_OR_IGNORE, dbid_domain, p_dbid); 
+	OSNS_db_release_handle(octx, handle);
+
+    }
+
+    return result;
 }
 
-static unsigned char NETWORK_db_add_network_transport(struct dstr_s *transport, struct dstr_s *semantics, unsigned int portnr, uint64_t dbid_host, uint64_t *p_dbid, unsigned int flags)
+static unsigned char NETWORK_db_add_network_transport(struct osns_ctx_s *octx, struct dstr_s *transport, struct dstr_s *semantics, unsigned int portnr, uint64_t dbid_host, uint64_t *p_dbid, unsigned int flags, void *ptr)
 {
     logoutput_debug("%s: add transport %.*s", __FUNCTION__, transport->length, transport->str);
-    return 0;
+    return 1;
 }
 
-static unsigned char NETWORK_db_add_network_service(struct dstr_s *service, uint64_t dbid_transport, uint64_t *p_dbid, unsigned int flags)
+static unsigned char NETWORK_db_add_network_service(struct osns_ctx_s *octx, struct dstr_s *service, uint64_t dbid_transport, uint64_t *p_dbid, unsigned int flags, void *ptr)
 {
+    struct osns_db_handle_s *handle=NULL;
+    int result=0;
+
     logoutput_debug("%s: add service %.*s", __FUNCTION__, service->length, service->str);
-    return 0;
+
+    handle=OSNS_db_get_handle(octx);
+
+    if (handle) {
+	struct osns_value_s value[2];
+
+	value[0].type='d';
+	value[0].ptr=(void *)service;
+	value[1].type=0;
+	value[1].ptr=NULL;
+
+	result=OSNS_modify_db_fs(octx, handle, "srv", value, 2, OSNS_DNSSD_MODUS_INSERT_OR_IGNORE, dbid_transport, p_dbid); 
+	OSNS_db_release_handle(octx, handle);
+
+    }
+
+    return result;
 }
 
-static unsigned char NETWORK_db_add_network_address(struct ip_address_s *ip, uint64_t dbid_host, uint64_t *p_dbid, unsigned int flags)
+static unsigned char NETWORK_db_add_network_address(struct osns_ctx_s *octx, struct ip_address_s *ip, uint64_t dbid_host, uint64_t *p_dbid, unsigned int flags, void *ptr)
 {
+    struct osns_db_handle_s *handle=NULL;
+    int result=0;
+
     logoutput_debug("%s: add ip %s", __FUNCTION__, ip->ip);
-    return 0;
+
+    handle=OSNS_db_get_handle(octx);
+
+    if (handle) {
+	struct osns_value_s value[2];
+
+	value[0].type='i';
+	value[0].ptr=(void *)ip;
+	value[1].type=0;
+	value[1].ptr=NULL;
+
+	if (ip->family==IP_ADDRESS_FAMILY_IPv4) {
+
+	    result=OSNS_modify_db_fs(octx, handle, "ipv4", value, 2, OSNS_DNSSD_MODUS_INSERT_OR_IGNORE, dbid_host, p_dbid); 
+
+	} else if (ip->family==IP_ADDRESS_FAMILY_IPv6) {
+
+	    result=OSNS_modify_db_fs(octx, handle, "ipv6", value, 2, OSNS_DNSSD_MODUS_INSERT_OR_IGNORE, dbid_host, p_dbid); 
+
+	}
+
+	OSNS_db_release_handle(octx, handle);
+
+    }
+
+    return result;
 }
 
 /* check the service in dns sd style (_ftp, _http, _ssh ...) exists */
@@ -118,7 +189,7 @@ static void dnssd_remove_trailing_spaces(struct dstr_s *stra)
     while (stra->length && TXT_isspace(stra->str[stra->length - 1])) stra->length--;
 }
 
-static int dnssd_add_network_domain(struct dstr_s *domain, uint64_t *p_dbid)
+static int dnssd_add_network_domain(struct osns_ctx_s *octx, struct dstr_s *domain, uint64_t *p_dbid, void *ptr)
 {
     unsigned int length=0;
 
@@ -137,11 +208,11 @@ static int dnssd_add_network_domain(struct dstr_s *domain, uint64_t *p_dbid)
 
     }
 
-    return NETWORK_db_add_network_domain(domain, p_dbid, NETWORK_RESOURCE_DOMAIN_FLAG_DNSSD);
+    return NETWORK_db_add_network_domain(octx, domain, p_dbid, NETWORK_RESOURCE_DOMAIN_FLAG_DNSSD, ptr);
 
 }
 
-static int dnssd_add_network_host(struct dstr_s *dnssd_hostname, uint64_t dbid_domain, uint64_t *p_dbid)
+static int dnssd_add_network_host(struct osns_ctx_s *octx, struct dstr_s *dnssd_hostname, uint64_t dbid_domain, uint64_t *p_dbid, void *ptr)
 {
     struct dstr_s hostname=DSTR_INIT;
     unsigned int length=0;
@@ -176,10 +247,10 @@ static int dnssd_add_network_host(struct dstr_s *dnssd_hostname, uint64_t dbid_d
 
     }
 
-    return NETWORK_db_add_network_host(&hostname, dbid_domain, p_dbid, NETWORK_RESOURCE_HOST_FLAG_DNSSD);
+    return NETWORK_db_add_network_host(octx, &hostname, dbid_domain, p_dbid, NETWORK_RESOURCE_HOST_FLAG_DNSSD, ptr);
 }
 
-static int dnssd_add_network_service(struct dstr_s *dnssd_service, struct dstr_s *dnssd_semantics, unsigned int portnr, uint64_t dbid_host, uint64_t *p_dbid)
+static int dnssd_add_network_service(struct osns_ctx_s *octx, struct dstr_s *dnssd_service, struct dstr_s *dnssd_semantics, unsigned int portnr, uint64_t dbid_host, uint64_t *p_dbid, void *ptr)
 {
     struct dstr_s transport=DSTR_INIT;
     struct dstr_s service=DSTR_INIT;
@@ -220,13 +291,13 @@ static int dnssd_add_network_service(struct dstr_s *dnssd_service, struct dstr_s
 
     if (DSTR_get_length(&transport)) {
 
-        if (NETWORK_db_add_network_transport(&transport, &semantics, portnr, dbid_host, p_dbid, NETWORK_RESOURCE_TRANSPORT_FLAG_DNSSD)==1) {
+        if (NETWORK_db_add_network_transport(octx, &transport, &semantics, portnr, dbid_host, p_dbid, NETWORK_RESOURCE_TRANSPORT_FLAG_DNSSD, ptr)==1) {
 
             /* is there a service found ? Like sftp ? */
 
             if (DSTR_get_length(&service)) {
 
-                int tmp=NETWORK_db_add_network_service(&service, *p_dbid, NULL, NETWORK_RESOURCE_SERVICE_FLAG_DNSSD);
+                int tmp=NETWORK_db_add_network_service(octx, &service, dbid_host, NULL, NETWORK_RESOURCE_SERVICE_FLAG_DNSSD, ptr);
 
             }
 
@@ -240,7 +311,7 @@ static int dnssd_add_network_service(struct dstr_s *dnssd_service, struct dstr_s
 
 }
 
-static int dnssd_add_network_address(struct io_addr_object_s *peer, uint64_t dbid_host, uint64_t *p_dbid)
+static int dnssd_add_network_address(struct osns_ctx_s *octx, struct io_addr_object_s *peer, uint64_t dbid_host, uint64_t *p_dbid, void *ptr)
 {
     struct ip_address_s ip;
 
@@ -253,8 +324,10 @@ static int dnssd_add_network_address(struct io_addr_object_s *peer, uint64_t dbi
 
     }
 
-    return NETWORK_db_add_network_address(&ip, dbid_host, p_dbid, NETWORK_RESOURCE_ADDRESS_FLAG_DNSSD);
+    return NETWORK_db_add_network_address(octx, &ip, dbid_host, p_dbid, NETWORK_RESOURCE_ADDRESS_FLAG_DNSSD, ptr);
 }
+
+/* MDSN CTX db's */
 
 static void cb_errorclose_mdns_socket(struct mdns_socket_ctx_s *mctx)
 {}
@@ -266,13 +339,14 @@ static unsigned char cb_select_mdns_socket(struct mdns_socket_ctx_s *mctx, char 
 
 static void cb_host_mdns_socket(struct mdns_socket_ctx_s *mctx, unsigned char action, struct io_addr_object_s *from, struct dstr_s *hostname, struct dstr_s *domain, struct dstr_s *service, struct dstr_s *semantics, unsigned int ttl)
 {
+    struct osns_ctx_s *octx=(struct osns_ctx_s *) mctx->ptr;
 
     if (action==MDNS_SOCKET_ACTION_ADD) {
         uint64_t dbid_domain=0;
         uint64_t dbid_host=0;
 
-        if (dnssd_add_network_domain(domain, &dbid_domain)==-1) return;
-        if (dnssd_add_network_host(hostname, dbid_domain, &dbid_host)==-1) return;
+        if (dnssd_add_network_domain(octx, domain, &dbid_domain, mctx->ptr)==-1) return;
+        if (dnssd_add_network_host(octx, hostname, dbid_domain, &dbid_host, mctx->ptr)==-1) return;
 
     }
 
@@ -280,15 +354,16 @@ static void cb_host_mdns_socket(struct mdns_socket_ctx_s *mctx, unsigned char ac
 
 static void cb_service_mdns_socket(struct mdns_socket_ctx_s *mctx, unsigned char action, struct io_addr_object_s *from, struct dstr_s *hostname, struct dstr_s *domain, struct dstr_s *service, struct dstr_s *semantics, unsigned int portnr)
 {
+    struct osns_ctx_s *octx=(struct osns_ctx_s *) mctx->ptr;
 
     if (action==MDNS_SOCKET_ACTION_ADD) {
         uint64_t dbid_domain=0;
         uint64_t dbid_host=0;
         uint64_t dbid_service=0;
 
-        if (dnssd_add_network_domain(domain, &dbid_domain)==-1) return;
-        if (dnssd_add_network_host(hostname, dbid_domain, &dbid_host)==-1) return;
-        if (dnssd_add_network_service(service, semantics, portnr, dbid_host, &dbid_service)==-1) return;
+        if (dnssd_add_network_domain(octx, domain, &dbid_domain, mctx->ptr)==-1) return;
+        if (dnssd_add_network_host(octx, hostname, dbid_domain, &dbid_host, mctx->ptr)==-1) return;
+        if (dnssd_add_network_service(octx, service, semantics, portnr, dbid_host, &dbid_service, mctx->ptr)==-1) return;
 
     }
 
@@ -296,15 +371,16 @@ static void cb_service_mdns_socket(struct mdns_socket_ctx_s *mctx, unsigned char
 
 static void cb_addr_mdns_socket(struct mdns_socket_ctx_s *mctx, unsigned char action, struct io_addr_object_s *from, struct dstr_s *hostname, struct dstr_s *domain, struct io_addr_object_s *peer)
 {
+    struct osns_ctx_s *octx=(struct osns_ctx_s *) mctx->ptr;
 
     if (action==MDNS_SOCKET_ACTION_ADD) {
         uint64_t dbid_domain=0;
         uint64_t dbid_host=0;
         uint64_t dbid_address=0;
 
-        if (dnssd_add_network_domain(domain, &dbid_domain)==-1) return;
-        if (dnssd_add_network_host(hostname, dbid_domain, &dbid_host)==-1) return;
-        if (dnssd_add_network_address(peer, dbid_host, &dbid_address)==-1) return;
+        if (dnssd_add_network_domain(octx, domain, &dbid_domain, mctx->ptr)==-1) return;
+        if (dnssd_add_network_host(octx, hostname, dbid_domain, &dbid_host, mctx->ptr)==-1) return;
+        if (dnssd_add_network_address(octx, peer, dbid_host, &dbid_address, mctx->ptr)==-1) return;
 
     }
 
@@ -318,7 +394,53 @@ static struct mdns_socket_ctx_s mdns_ctx = {
     .cb_host            = cb_host_mdns_socket,
     .cb_service         = cb_service_mdns_socket,
     .cb_addr            = cb_addr_mdns_socket,
+    .ptr		= NULL,
 };
+
+static void OSNS_open_db_fs(struct osns_ctx_s *octx, struct osns_db_ctx_s *db_ctx)
+{
+    struct fs_path_s *path=&db_ctx->db.root;
+
+    FS_path_init(path);
+    FS_path_append_init(path, FS_PATH_FLAG_BUFFER_ALLOC);
+
+    /* use the path for libexec modules */
+
+    if (FS_path_append(path, 'p', (void *) &octx->options->runpath.value, 0)==0) return;
+    if (FS_path_append(path, 'c', (void *) "dnssd", 1)==0) return;
+
+    if (FS_mkdir(NULL, 'p', path, NULL)) {
+
+	logoutput_debug("%s: created %.*s", __FUNCTION__, path->start.length, path->start.str);
+
+    } else {
+
+	logoutput_debug("%s: unable to create %.*s", __FUNCTION__, path->start.length, path->start.str);
+
+    }
+
+    if (FS_path_append(path, 'c', (void *) "db", 1)==0) return;
+
+    if (FS_mkdir(NULL, 'p', path, NULL)) {
+
+	logoutput_debug("%s: created %.*s", __FUNCTION__, path->start.length, path->start.str);
+
+    } else {
+
+	logoutput_debug("%s: unable to create %.*s", __FUNCTION__, path->start.length, path->start.str);
+
+    }
+
+    octx->db_ctx=db_ctx;
+
+}
+
+static void OSNS_close_db_fs(struct osns_ctx_s *octx, struct osns_db_ctx_s *dbctx)
+{
+    struct fs_path_s *path=&dbctx->db.root;
+
+    FS_path_clear(path);
+}
 
 static int osns_manage_dnssd(struct osns_ctx_s *octx, unsigned char actioncode, struct osns_ctx_action_s *action)
 {
@@ -327,12 +449,22 @@ static int osns_manage_dnssd(struct osns_ctx_s *octx, unsigned char actioncode, 
 
     if (actioncode==OSNS_CTX_ACTION_CODE_DO) {
 
+	/* use fs backend */
+
+	db_ctx.type=OSNS_DB_TYPE_FS;
+	LIST_header_init(&db_ctx.handles, 0);
+	OSNS_open_db_fs(octx, &db_ctx);
+
+	mdns_ctx.ptr=(void *) octx;
+
         DNSSD_init(&mdns_ctx);
         DNSSD_start();
 
     } else if (actioncode==OSNS_CTX_ACTION_CODE_UNDO) {
 
         DNSSD_finish();
+        OSNS_db_clear_handles(octx);
+        OSNS_close_db_fs(octx, &db_ctx);
 
     }
 

@@ -11,7 +11,7 @@ TARGET          =
 osns_dnssd_CFLAGS = -D_FILE_OFFSET_BITS=64 -lz -lpthread -fPIC -lm -lsystemd -I . -losns -I include -I ./ssh -I /usr/include/osns-1 -Wall -Wno-unused-but-set-variable -Wno-uninitialized -Wno-unused-variable -Wno-unused-label -Wno-unused-function
 osns_dnssd_LDFLAGS = -L/usr/lib64/libosns.so
 
-osns_dnssd_SOURCES = main.c action/dnssd.c action/event.c action/pidfile.c
+osns_dnssd_SOURCES = main.c action/dnssd.c action/event.c action/pidfile.c db/file.c db/handle.c
 
 # osns_dnssd_OBJECTS = $(osns_dnssd_SOURCES:.c=.o)
 

@@ -168,7 +168,7 @@ int main(int argc, char *argv[])
     unsigned char role=OSNS_CTX_ROLE_APP;
     int result=0;
 
-    LOGGING_switch_backend("syslog");
+    LOGGING_switch_backend("std");
     LOGGING_set_level(LOG_DEBUG);
 
     /* init */
@@ -200,6 +200,9 @@ int main(int argc, char *argv[])
         exit(0);
 
     }
+
+    LOGGING_switch_backend("syslog");
+    LOGGING_set_level(LOG_DEBUG);
 
     /* initialize the osns ctx (which is the backbone of all osns programs) */
 
