@@ -21,27 +21,38 @@ At moment of writing the first backend ldap is being worked on.
 The purpose is that appilactions can easily browse the network services,
 well much easier than doing mdsn self (using ldap client library, sql client library or simple fs ops).
 
+News
 
-Backenbd spoecific
+28 augustus 2026
 
+IU dropped backend ldap and sqlite. The backend filsystem is so effectiev, ans powerfull,
+and applications do not need an extra library, any application can reed filesystem directories and files.
 
-ldap
-----
+The dnssd map looks like (for example)
 
-OSNS_ddnssd stores information at ou=dnssd,ou=system,dc=localhost,dc=localdomain
+%DNSSD ROOT% /
+		host:00000001 -> host:00000001:examplehostA
+		host:00000001:examplehostA
+		    ipv4:00000001 -> ipv4:00000001:192.168.0.1
+		    ipv4:00000001:192.168.0.1
+		    srv:00000001 -> srv:00000001:sftp
+		    srv:00000001:sftp
+		    srv:00000002 -> srv:00000002:cups
+		    srv:00000002:cups
+		host:00000001 -> host:00000001:examplehostB
+		host:00000001:examplehostB
+		    ipv4:00000002 -> ipv4:00000002:192.168.0.2
+		    ipv4:00000002:192.168.0.2
+		    srv:00000003 -> srv:00000003:smb
+		    srv:00000003:smb
 
-At this moment I'm finding out how the records should look like, and the hiearchy.
+DNS SD detected here in this example two hosts (examplehostA and examplehostB) with the following addresses and services
+examplehostA (ipv4 192.168.0.1, sftp, cups)
+examplehostB (ipv4 192.168.0.2, smb)
 
+OSNS DNSSD tries to reckognize the service (by looking at /etc/services) and drops those which it cannot find.
 
-sql
-----
+OSNS DNSSD does only discovery at this moment.
 
-follows
-
-
-fs
---
-
-follows
-
+Known issues: sending a term signal does not end the program. Working on it.
 
