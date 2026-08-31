@@ -33,17 +33,12 @@ The dnssd map looks like (for example)
 %DNSSD ROOT% /
 		host:00000001 -> host:00000001:examplehostA
 		host:00000001:examplehostA
-		    ipv4:00000001 -> ipv4:00000001:192.168.0.1
 		    ipv4:00000001:192.168.0.1
-		    srv:00000001 -> srv:00000001:sftp
-		    srv:00000001:sftp
-		    srv:00000002 -> srv:00000002:cups
+		    srv:00000001:ssh
 		    srv:00000002:cups
 		host:00000001 -> host:00000001:examplehostB
 		host:00000001:examplehostB
-		    ipv4:00000002 -> ipv4:00000002:192.168.0.2
 		    ipv4:00000002:192.168.0.2
-		    srv:00000003 -> srv:00000003:smb
 		    srv:00000003:smb
 
 DNS SD detected here in this example two hosts (examplehostA and examplehostB) with the following addresses and services
@@ -55,4 +50,25 @@ OSNS DNSSD tries to reckognize the service (by looking at /etc/services) and dro
 OSNS DNSSD does only discovery at this moment.
 
 Known issues: sending a term signal does not end the program. Working on it.
+
+
+Remark about services announced by DNS SD
+_________________________________________
+
+It's common practice to announce printers managed by CUPS all via DNS SD. This is nonsense. The CUPS service (a printer broker/manager)
+has to be announced, and only that. If clients want to get a list, they can use the CUPS API.
+
+This also counts for the SSH protocol. SSH supports by protocol:
+- exec a remote command/program/script
+- start a shell
+- start a subsystem (default supported sftp)
+
+If the SSH supports more subsytems, it's not the task of DNS SD to provide those.
+There is a problem here, since SSHH does noet have any other way to let clients know what susystems
+it uses, other than a special extensions like
+
+    supported@ssh.osns.net
+
+which gives the client a list of susystemms it uses.
+
 

@@ -31,7 +31,6 @@ static struct osns_db_ctx_s db_ctx;
 static int NETWORK_db_add_network_domain(struct osns_ctx_s *octx, struct dstr_s *domain, uint64_t *p_dbid, unsigned int flags, void *ptr)
 {
     logoutput_debug("%s: add domain %.*s", __FUNCTION__, domain->length, domain->str);
-
     return 0;
 }
 
@@ -52,7 +51,7 @@ static int NETWORK_db_add_network_host(struct osns_ctx_s *octx, struct dstr_s *h
 	value[1].type=0;
 	value[1].ptr=NULL;
 
-	result=OSNS_modify_db_fs(octx, handle, "host", value, 2, OSNS_DNSSD_MODUS_INSERT_OR_IGNORE, dbid_domain, p_dbid); 
+	result=OSNS_modify_db_fs(octx, handle, "host", value, 2, OSNS_DNSSD_MODUS_INSERT_OR_IGNORE, dbid_domain, p_dbid, NULL); 
 	OSNS_db_release_handle(octx, handle);
 
     }
@@ -66,7 +65,7 @@ static unsigned char NETWORK_db_add_network_transport(struct osns_ctx_s *octx, s
     return 1;
 }
 
-static unsigned char NETWORK_db_add_network_service(struct osns_ctx_s *octx, struct dstr_s *service, uint64_t dbid_transport, uint64_t *p_dbid, unsigned int flags, void *ptr)
+static unsigned char NETWORK_db_add_network_service(struct osns_ctx_s *octx, struct dstr_s *service, uint64_t dbid_host, uint64_t *p_dbid, unsigned int flags, struct dstr_s *sub, void *ptr)
 {
     struct osns_db_handle_s *handle=NULL;
     int result=0;
@@ -83,7 +82,7 @@ static unsigned char NETWORK_db_add_network_service(struct osns_ctx_s *octx, str
 	value[1].type=0;
 	value[1].ptr=NULL;
 
-	result=OSNS_modify_db_fs(octx, handle, "srv", value, 2, OSNS_DNSSD_MODUS_INSERT_OR_IGNORE, dbid_transport, p_dbid); 
+	result=OSNS_modify_db_fs(octx, handle, "srv", value, 2, OSNS_DNSSD_MODUS_INSERT_OR_IGNORE, dbid_host, p_dbid, sub); 
 	OSNS_db_release_handle(octx, handle);
 
     }
@@ -110,11 +109,11 @@ static unsigned char NETWORK_db_add_network_address(struct osns_ctx_s *octx, str
 
 	if (ip->family==IP_ADDRESS_FAMILY_IPv4) {
 
-	    result=OSNS_modify_db_fs(octx, handle, "ipv4", value, 2, OSNS_DNSSD_MODUS_INSERT_OR_IGNORE, dbid_host, p_dbid); 
+	    result=OSNS_modify_db_fs(octx, handle, "ipv4", value, 2, OSNS_DNSSD_MODUS_INSERT_OR_IGNORE, dbid_host, p_dbid, NULL); 
 
 	} else if (ip->family==IP_ADDRESS_FAMILY_IPv6) {
 
-	    result=OSNS_modify_db_fs(octx, handle, "ipv6", value, 2, OSNS_DNSSD_MODUS_INSERT_OR_IGNORE, dbid_host, p_dbid); 
+	    result=OSNS_modify_db_fs(octx, handle, "ipv6", value, 2, OSNS_DNSSD_MODUS_INSERT_OR_IGNORE, dbid_host, p_dbid, NULL); 
 
 	}
 
@@ -127,7 +126,7 @@ static unsigned char NETWORK_db_add_network_address(struct osns_ctx_s *octx, str
 
 /* check the service in dns sd style (_ftp, _http, _ssh ...) exists */
 
-static unsigned char dnssd_service_check(struct dstr_s *dnssd_service, struct dstr_s *transport, struct dstr_s *service, unsigned int *p_portnr)
+static unsigned char dnssd_service_check(struct dstr_s *dnssd_service, struct dstr_s *service, struct dstr_s *sub, unsigned int *p_portnr)
 {
     int portnr=0;
     struct dstr_s tmp=DSTR_INIT;
@@ -145,11 +144,12 @@ static unsigned char dnssd_service_check(struct dstr_s *dnssd_service, struct ds
 
     if (portnr>=0) {
 
-        if (transport) DSTR_set_str(transport, &tmp, 0);
+        if (service) DSTR_set_str(service, &tmp, 0);
         if (p_portnr) *p_portnr=portnr;
         return 1;
 
     } else {
+	struct dstr_s dummy=DSTR_INIT;
 
         /* not found ... try there is a - in the service, like in sftp-ssh
             which is sftp over ssh ... so the service to connect to is ssh
@@ -158,19 +158,22 @@ static unsigned char dnssd_service_check(struct dstr_s *dnssd_service, struct ds
             but it's also possible that it's providing the daap service,
             or printer service ipp */
 
-        unsigned int length=DSTR_get_last_dstr(&tmp, '-', transport, 1, 0);
+	if (sub==NULL) sub=&dummy;
+
+        unsigned int length=DSTR_get_first_dstr(&tmp, '-', sub, 1, 0);
 
         if (length) {
 
-            portnr=NETWORK_service_get_port_by_name(transport);
+            portnr=NETWORK_service_get_port_by_name(sub);
 
             if (portnr>=0) {
 
-                if (service) DSTR_set_str(service, &tmp, 0);
                 if (p_portnr) *p_portnr=portnr;
                 return 1;
 
             }
+
+	    if (service) DSTR_set_str(service, &tmp, 0);
 
         }
 
@@ -252,8 +255,8 @@ static int dnssd_add_network_host(struct osns_ctx_s *octx, struct dstr_s *dnssd_
 
 static int dnssd_add_network_service(struct osns_ctx_s *octx, struct dstr_s *dnssd_service, struct dstr_s *dnssd_semantics, unsigned int portnr, uint64_t dbid_host, uint64_t *p_dbid, void *ptr)
 {
-    struct dstr_s transport=DSTR_INIT;
     struct dstr_s service=DSTR_INIT;
+    struct dstr_s sub=DSTR_INIT;
     struct dstr_s semantics=DSTR_INIT;
     unsigned char servicecheck=0;
     int result=0;
@@ -275,7 +278,7 @@ static int dnssd_add_network_service(struct osns_ctx_s *octx, struct dstr_s *dns
     if (TXT_replace_char(dnssd_service->str, dnssd_service->length, (REPLACE_CNTRL_FLAG_TEXT | REPLACE_CNTRL_FLAG_BINARY), NULL)>0) return -1;
     if (TXT_replace_char(dnssd_semantics->str, dnssd_semantics->length, (REPLACE_CNTRL_FLAG_TEXT | REPLACE_CNTRL_FLAG_BINARY), NULL)>0) return -1;
 
-    servicecheck=dnssd_service_check(dnssd_service, &transport, &service, NULL);
+    servicecheck=dnssd_service_check(dnssd_service, &service, &sub, NULL);
 
     if (servicecheck==0) {
 
@@ -289,17 +292,9 @@ static int dnssd_add_network_service(struct osns_ctx_s *octx, struct dstr_s *dns
     DSTR_set_str(&semantics, dnssd_semantics, 0);
     if ((semantics.str[0] == '_') && (semantics.length>0)) DSTR_shift(&semantics, 1);
 
-    if (DSTR_get_length(&transport)) {
+    if (DSTR_get_length(&service)) {
 
-        if (NETWORK_db_add_network_transport(octx, &transport, &semantics, portnr, dbid_host, p_dbid, NETWORK_RESOURCE_TRANSPORT_FLAG_DNSSD, ptr)==1) {
-
-            /* is there a service found ? Like sftp ? */
-
-            if (DSTR_get_length(&service)) {
-
-                int tmp=NETWORK_db_add_network_service(octx, &service, dbid_host, NULL, NETWORK_RESOURCE_SERVICE_FLAG_DNSSD, ptr);
-
-            }
+        if (NETWORK_db_add_network_service(octx, &service, dbid_host, p_dbid, NETWORK_RESOURCE_SERVICE_FLAG_DNSSD, &sub, ptr)==1) {
 
             result=1;
 
