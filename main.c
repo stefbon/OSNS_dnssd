@@ -64,15 +64,21 @@ static void system_signal_process_event(unsigned int signo, pid_t pid, union sys
 	    case SIGABRT:
 	    case SIGQUIT:
 
-	        logoutput_debug("%s: caught (HUP/TERM/INT/STOP/ABRT/QUIT) signal %i from pid %u", __FUNCTION__, signo, pid);
-	        BEVENTLOOP_stop();
-	        // SYSTEM_signal_monitor_stop();
+		struct osns_ctx_s *octx=(struct osns_ctx_s *) ptr;
+		struct pid_info_s *pinfo=octx->pinfo;
+
+		if (pinfo->pid != pid) {
+
+	    	    logoutput_debug("%s: caught (HUP/TERM/INT/STOP/ABRT/QUIT) signal %i from pid %u", __FUNCTION__, signo, pid);
+	    	    BEVENTLOOP_stop();
+	    	    kill(pinfo->pid, SIGUSR2);
+
+		}
+
 	        break;
 
 	    case SIGUSR1:
 	    case SIGUSR2:
-
-        /* TODO: use to reread the configuration ?*/
 
 	        logoutput_debug("%s: caught USR1/2 signal %i from %u", __FUNCTION__, signo, pid);
 	        system_signal_create_osns_event(signo, pid, type, ptr);
@@ -272,12 +278,7 @@ int main(int argc, char *argv[])
 
     OSNS_add_dnssd_to_actions_list(&octx);
     OSNS_add_event_ctx_to_actions_list(&octx);
-
-    if (arguments.flags & OSNS_ARGUMENT_PIDFILE) {
-
-        OSNS_add_pidfile_to_actions_list(&octx);
-
-    }
+    OSNS_add_pidfile_to_actions_list(&octx);
 
     /* Initialize and start default threads
 	NOTE: important to start these after initializing the signal handler,
