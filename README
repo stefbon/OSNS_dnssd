@@ -33,13 +33,13 @@ The dnssd map looks like (for example)
 %DNSSD ROOT% /
 		host:00000001 -> host:00000001:examplehostA
 		host:00000001:examplehostA
-		    ipv4:00000001:192.168.0.1
-		    srv:00000001:ssh
-		    srv:00000002:cups
+		    ipv4:192.168.0.1
+		    srv:ssh
+		    srv:cups
 		host:00000001 -> host:00000001:examplehostB
 		host:00000001:examplehostB
-		    ipv4:00000002:192.168.0.2
-		    srv:00000003:smb
+		    ipv4:192.168.0.2
+		    srv:smb
 
 DNS SD detected here in this example two hosts (examplehostA and examplehostB) with the following addresses and services
 examplehostA (ipv4 192.168.0.1, sftp, cups)
